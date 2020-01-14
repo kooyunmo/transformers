@@ -139,3 +139,6 @@ serialization_dir
 # emacs
 *.*~
 debug.env
+
+# glue_data
+glue_data/

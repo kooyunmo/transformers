@@ -215,7 +215,27 @@ def train(args, train_dataset, model, tokenizer):
                 inputs["token_type_ids"] = (
                     batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None
                 )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
-            outputs = model(**inputs)
+            print("TEST")
+            print(model)
+            print(model.__dict__)
+            print(inputs)
+            print("input_ids")
+            print(inputs['input_ids'])
+            print(inputs['input_ids'].shape)
+            print("attention_mask")
+            print(inputs['attention_mask'])
+            print(inputs['attention_mask'].shape)
+            print("labels")
+            print(inputs['labels'])
+            print(inputs['labels'].shape)
+            print("token_type_ids")
+            print(inputs['token_type_ids'])
+            print(inputs['token_type_ids'].shape)
+            model = model.to(args.device)
+            outputs = model(inputs['input_ids'],
+                            inputs['attention_mask'],
+                            inputs['labels'],
+                            inputs['token_type_ids'])
             loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
 
             if args.n_gpu > 1:
@@ -631,6 +651,7 @@ def main():
         num_labels=num_labels,
         finetuning_task=args.task_name,
         cache_dir=args.cache_dir if args.cache_dir else None,
+        torchscript=True,       # This is changed (add torchscript option: https://huggingface.co/transformers/torchscript.html#saving-a-model)
     )
     tokenizer = tokenizer_class.from_pretrained(
         args.tokenizer_name if args.tokenizer_name else args.model_name_or_path,
@@ -647,14 +668,39 @@ def main():
     if args.local_rank == 0:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
 
+
+    '''
     model.to(args.device)
+
+    dummy_input = [torch.zeros([8, 128], dtype=torch.int64).to(args.device),
+                   torch.zeros([8, 128], dtype=torch.int64).to(args.device),
+                   torch.zeros([8], dtype=torch.int64).to(args.device),
+                   torch.zeros([8, 128], dtype=torch.int64).to(args.device)]
+
+    traced_model = torch.jit.trace(model, dummy_input) 
+    '''
+
+    
+    #### Error code ####
+
+    dummy_input = [torch.zeros([8, 128], dtype=torch.int64),
+                   torch.zeros([8, 128], dtype=torch.int64),
+                   torch.zeros([8], dtype=torch.int64),
+                   torch.zeros([8, 128], dtype=torch.int64)]
+
+    print("Generate IR")
+    traced_model = torch.jit.trace(model, dummy_input)
+    traced_model = traced_model.to(args.device)
+
+    ####################
+
 
     logger.info("Training/evaluation parameters %s", args)
 
     # Training
     if args.do_train:
         train_dataset = load_and_cache_examples(args, args.task_name, tokenizer, evaluate=False)
-        global_step, tr_loss = train(args, train_dataset, model, tokenizer)
+        global_step, tr_loss = train(args, train_dataset, traced_model, tokenizer)
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
     # Saving best-practices: if you use defaults names for the model, you can reload it using from_pretrained()
@@ -667,7 +713,7 @@ def main():
         # Save a trained model, configuration and tokenizer using `save_pretrained()`.
         # They can then be reloaded using `from_pretrained()`
         model_to_save = (
-            model.module if hasattr(model, "module") else model
+            traced_model.module if hasattr(traced_model, "module") else traced_model
         )  # Take care of distributed/parallel training
         model_to_save.save_pretrained(args.output_dir)
         tokenizer.save_pretrained(args.output_dir)
@@ -676,9 +722,9 @@ def main():
         torch.save(args, os.path.join(args.output_dir, "training_args.bin"))
 
         # Load a trained model and vocabulary that you have fine-tuned
-        model = model_class.from_pretrained(args.output_dir)
+        traced_model = model_class.from_pretrained(args.output_dir)
         tokenizer = tokenizer_class.from_pretrained(args.output_dir)
-        model.to(args.device)
+        traced_model.to(args.device)
 
     # Evaluation
     results = {}
@@ -695,9 +741,9 @@ def main():
             global_step = checkpoint.split("-")[-1] if len(checkpoints) > 1 else ""
             prefix = checkpoint.split("/")[-1] if checkpoint.find("checkpoint") != -1 else ""
 
-            model = model_class.from_pretrained(checkpoint)
-            model.to(args.device)
-            result = evaluate(args, model, tokenizer, prefix=prefix)
+            traced_model = model_class.from_pretrained(checkpoint)
+            traced_model.to(args.device)
+            result = evaluate(args, traced_model, tokenizer, prefix=prefix)
             result = dict((k + "_{}".format(global_step), v) for k, v in result.items())
             results.update(result)
 
