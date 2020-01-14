@@ -17,4 +17,3 @@ CUDA_VISIBLE_DEVICES=0 python3 ./examples/run_glue.py \
     --output_dir ./tmp/$TASK_NAME \
     --overwrite_output_dir \
     --overwrite_cache \
-

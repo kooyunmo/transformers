@@ -287,7 +287,13 @@ def train(args, train_dataset, model, tokenizer):
                     torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
                     logger.info("Saving optimizer and scheduler states to %s", output_dir)
                 '''
-
+            
+            '''
+            if cnt % 100 == 99:
+                print("\n################################################")
+                print("Average time for one optimizing step: {} sec".format(time_sum / cnt))
+                print("################################################")
+            '''
 
             if args.max_steps > 0 and global_step > args.max_steps:
                 epoch_iterator.close()
