@@ -215,23 +215,6 @@ def train(args, train_dataset, model, tokenizer):
                 inputs["token_type_ids"] = (
                     batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None
                 )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
-            print("TEST")
-            print(model)
-            print(model.__dict__)
-            print(inputs)
-            print("input_ids")
-            print(inputs['input_ids'])
-            print(inputs['input_ids'].shape)
-            print("attention_mask")
-            print(inputs['attention_mask'])
-            print(inputs['attention_mask'].shape)
-            print("labels")
-            print(inputs['labels'])
-            print(inputs['labels'].shape)
-            print("token_type_ids")
-            print(inputs['token_type_ids'])
-            print(inputs['token_type_ids'].shape)
-            model = model.to(args.device)
             outputs = model(inputs['input_ids'],
                             inputs['attention_mask'],
                             inputs['labels'],
@@ -285,6 +268,7 @@ def train(args, train_dataset, model, tokenizer):
                         tb_writer.add_scalar(key, value, global_step)
                     print(json.dumps({**logs, **{"step": global_step}}))
 
+                '''
                 if args.local_rank in [-1, 0] and args.save_steps > 0 and global_step % args.save_steps == 0:
                     # Save model checkpoint
                     output_dir = os.path.join(args.output_dir, "checkpoint-{}".format(global_step))
@@ -302,7 +286,14 @@ def train(args, train_dataset, model, tokenizer):
                     torch.save(optimizer.state_dict(), os.path.join(output_dir, "optimizer.pt"))
                     torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
                     logger.info("Saving optimizer and scheduler states to %s", output_dir)
-
+                '''
+            
+            '''
+            if cnt % 100 == 99:
+                print("\n################################################")
+                print("Average time for one optimizing step: {} sec".format(time_sum / cnt))
+                print("################################################")
+            '''
 
             if args.max_steps > 0 and global_step > args.max_steps:
                 epoch_iterator.close()
@@ -651,7 +642,7 @@ def main():
         num_labels=num_labels,
         finetuning_task=args.task_name,
         cache_dir=args.cache_dir if args.cache_dir else None,
-        torchscript=True,       # This is changed (add torchscript option: https://huggingface.co/transformers/torchscript.html#saving-a-model)
+        torchscript=True,
     )
     tokenizer = tokenizer_class.from_pretrained(
         args.tokenizer_name if args.tokenizer_name else args.model_name_or_path,
@@ -668,32 +659,14 @@ def main():
     if args.local_rank == 0:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
 
-
-    '''
     model.to(args.device)
-
-    dummy_input = [torch.zeros([8, 128], dtype=torch.int64).to(args.device),
-                   torch.zeros([8, 128], dtype=torch.int64).to(args.device),
-                   torch.zeros([8], dtype=torch.int64).to(args.device),
-                   torch.zeros([8, 128], dtype=torch.int64).to(args.device)]
+    
+    dummy_input = [torch.zeros([8, 128], dtype=torch.long).to(args.device),
+                   torch.zeros([8, 128], dtype=torch.long).to(args.device),
+                   torch.zeros([8], dtype=torch.long).to(args.device),
+                   torch.zeros([8, 128], dtype=torch.long).to(args.device)]
 
     traced_model = torch.jit.trace(model, dummy_input) 
-    '''
-
-    
-    #### Error code ####
-
-    dummy_input = [torch.zeros([8, 128], dtype=torch.int64),
-                   torch.zeros([8, 128], dtype=torch.int64),
-                   torch.zeros([8], dtype=torch.int64),
-                   torch.zeros([8, 128], dtype=torch.int64)]
-
-    print("Generate IR")
-    traced_model = torch.jit.trace(model, dummy_input)
-    traced_model = traced_model.to(args.device)
-
-    ####################
-
 
     logger.info("Training/evaluation parameters %s", args)
 
