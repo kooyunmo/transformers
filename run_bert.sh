@@ -10,8 +10,8 @@ CUDA_VISIBLE_DEVICES=0 python3 ./examples/run_glue.py \
     --do_lower_case \
     --data_dir $GLUE_DIR/$TASK_NAME \
     --max_seq_length 128 \
-    --per_gpu_eval_batch_size=8   \
-    --per_gpu_train_batch_size=8   \
+    --per_gpu_eval_batch_size=1   \
+    --per_gpu_train_batch_size=1   \
     --learning_rate 2e-5 \
     --num_train_epochs 3.0 \
     --output_dir ./tmp/$TASK_NAME \
