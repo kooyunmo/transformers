@@ -193,12 +193,19 @@ def main():
     # Initialize the model and tokenizer
     try:
         args.model_type = args.model_type.lower()
-        model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
+        config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
     except KeyError:
         raise KeyError("the model {} you specified is not supported. You are welcome to add it and open a PR :)")
-
+    
+    config = config_class.from_pretrained(
+        args.config_name if args.config_name else args.model_name_or_path,
+        torchscript=True,
+    )
     tokenizer = tokenizer_class.from_pretrained(args.model_name_or_path)
-    model = model_class.from_pretrained(args.model_name_or_path)
+    model = model_class.from_pretrained(
+        args.model_name_or_path,
+        config=config
+    )
     model.to(args.device)       # need to set the device to cuda before generating trace
 
     dummy_input = [torch.zeros([args.per_gpu_train_batch_size, args.max_seq_length], dtype=torch.long).to(args.device),
@@ -222,7 +229,7 @@ def main():
     encoded_prompt = tokenizer.encode(prompt_text, add_special_tokens=False, return_tensors="pt")
     encoded_prompt = encoded_prompt.to(args.device)
 
-    output_sequences = model.generate(
+    output_sequences = traced_model.generate(
         input_ids=encoded_prompt,
         max_length=args.length,
         temperature=args.temperature,
