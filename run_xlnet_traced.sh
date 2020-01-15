@@ -1,7 +1,7 @@
 export GLUE_DIR=./glue_data
 export TASK_NAME=MRPC
             
-CUDA_VISIBLE_DEVICES=0 python3 ./examples/run_glue_traced2.py \
+CUDA_VISIBLE_DEVICES=0 python3 ./examples/run_glue_xlnet_traced.py \
     --model_type xlnet \
     --model_name_or_path xlnet-base-cased \
     --task_name $TASK_NAME \

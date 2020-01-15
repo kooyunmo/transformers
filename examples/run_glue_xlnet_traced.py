@@ -215,10 +215,14 @@ def train(args, train_dataset, model, tokenizer):
                 inputs["token_type_ids"] = (
                     batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None
                 )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
+            
+            outputs = model(**inputs)
+            '''
             outputs = model(inputs['input_ids'],
                             inputs['attention_mask'],
                             inputs['labels'],
                             inputs['token_type_ids'])
+            '''
             loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
 
             if args.n_gpu > 1:
@@ -661,11 +665,12 @@ def main():
 
     model.to(args.device)
     
-    dummy_input = [torch.zeros([8, 128], dtype=torch.long).to(args.device),
-                   torch.zeros([8, 128], dtype=torch.long).to(args.device),
-                   torch.zeros([8], dtype=torch.long).to(args.device),
-                   torch.zeros([8, 128], dtype=torch.long).to(args.device)]
+    dummy_input = [torch.zeros([args.per_gpu_train_batch_size, args.max_seq_length], dtype=torch.long).to(args.device),
+                   torch.zeros([args.per_gpu_train_batch_size, args.max_seq_length], dtype=torch.long).to(args.device),
+                   torch.zeros([args.per_gpu_train_batch_size], dtype=torch.long).to(args.device),
+                   torch.zeros([args.per_gpu_train_batch_size, args.max_seq_length], dtype=torch.long).to(args.device)]
 
+    print("Generate Trace")
     traced_model = torch.jit.trace(model, dummy_input) 
 
     logger.info("Training/evaluation parameters %s", args)
