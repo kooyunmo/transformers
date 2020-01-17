@@ -142,3 +142,4 @@ debug.env
 
 # glue_data
 glue_data/
+tmp/
