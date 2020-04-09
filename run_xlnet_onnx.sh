@@ -1,9 +1,9 @@
 export GLUE_DIR=./glue_data
 export TASK_NAME=MRPC
-            
-CUDA_VISIBLE_DEVICES=0 python ./examples/run_glue.py \
-    --model_type bert \
-    --model_name_or_path bert-base-uncased \
+
+CUDA_VISIBLE_DEVICES=0 python3 ./examples/run_glue_xlnet_onnx.py \
+    --model_type xlnet \
+    --model_name_or_path xlnet-base-cased \
     --task_name $TASK_NAME \
     --do_train \
     --do_eval \

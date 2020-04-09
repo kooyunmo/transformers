@@ -30,6 +30,8 @@ from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, Tenso
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
 
+import onnx
+
 from transformers import (
     WEIGHTS_NAME,
     AdamW,
@@ -217,12 +219,15 @@ def train(args, train_dataset, model, tokenizer):
                 )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
 
             with torch.autograd.profiler.profile(use_cuda=True) as prof:
-                outputs = model(**inputs)
+                outputs = model(inputs['input_ids'],
+                                inputs['attention_mask'],
+                                inputs['labels'],
+                                inputs['token_type_ids'])
 
             if step % 200 == 199:
                 print('step: %d' % step)
                 print(prof.key_averages().table(sort_by="self_cpu_time_total"))
-                prof.export_chrome_trace('./profile/batch{}_{}_chrome_trace'.format(args.train_batch_size, args.model_type))
+                prof.export_chrome_trace('./profile/batch%d_bert_trace_chrome_trace' % args.train_batch_size)
 
             loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
 
@@ -292,6 +297,7 @@ def train(args, train_dataset, model, tokenizer):
                     torch.save(scheduler.state_dict(), os.path.join(output_dir, "scheduler.pt"))
                     logger.info("Saving optimizer and scheduler states to %s", output_dir)
                 '''
+
             '''
             if cnt % 100 == 99:
                 print("\n################################################")
@@ -646,6 +652,7 @@ def main():
         num_labels=num_labels,
         finetuning_task=args.task_name,
         cache_dir=args.cache_dir if args.cache_dir else None,
+        torchscript=True,
     )
     tokenizer = tokenizer_class.from_pretrained(
         args.tokenizer_name if args.tokenizer_name else args.model_name_or_path,
@@ -664,12 +671,33 @@ def main():
 
     model.to(args.device)
 
+    dummy_input = [torch.zeros([args.per_gpu_train_batch_size, args.max_seq_length], dtype=torch.long).to(args.device),
+                   torch.zeros([args.per_gpu_train_batch_size, args.max_seq_length], dtype=torch.long).to(args.device),
+                   torch.zeros([args.per_gpu_train_batch_size], dtype=torch.long).to(args.device),
+                   torch.zeros([args.per_gpu_train_batch_size, args.max_seq_length], dtype=torch.long).to(args.device)]
+
+    ex_input = (torch.zeros([args.per_gpu_train_batch_size, args.max_seq_length], dtype=torch.long).to(args.device),
+                torch.zeros([args.per_gpu_train_batch_size, args.max_seq_length], dtype=torch.long).to(args.device),
+                torch.zeros([args.per_gpu_train_batch_size], dtype=torch.long).to(args.device),
+                torch.zeros([args.per_gpu_train_batch_size, args.max_seq_length], dtype=torch.long).to(args.device))
+
+
+
+    print("Generate TorchScript trace")
+    traced_model = torch.jit.trace(model, dummy_input)
+    print("Done")
+
+    # export model to ONNX format
+    print("Export model to ONNX format")
+    torch.onnx.export(model, ex_input, 'bert.onnx', verbose=True)
+    print("Done")
+
     logger.info("Training/evaluation parameters %s", args)
 
     # Training
     if args.do_train:
         train_dataset = load_and_cache_examples(args, args.task_name, tokenizer, evaluate=False)
-        global_step, tr_loss = train(args, train_dataset, model, tokenizer)
+        global_step, tr_loss = train(args, train_dataset, traced_model, tokenizer)
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
     # Saving best-practices: if you use defaults names for the model, you can reload it using from_pretrained()
@@ -682,7 +710,7 @@ def main():
         # Save a trained model, configuration and tokenizer using `save_pretrained()`.
         # They can then be reloaded using `from_pretrained()`
         model_to_save = (
-            model.module if hasattr(model, "module") else model
+            traced_model.module if hasattr(traced_model, "module") else traced_model
         )  # Take care of distributed/parallel training
         model_to_save.save_pretrained(args.output_dir)
         tokenizer.save_pretrained(args.output_dir)
@@ -691,9 +719,9 @@ def main():
         torch.save(args, os.path.join(args.output_dir, "training_args.bin"))
 
         # Load a trained model and vocabulary that you have fine-tuned
-        model = model_class.from_pretrained(args.output_dir)
+        traced_model = model_class.from_pretrained(args.output_dir)
         tokenizer = tokenizer_class.from_pretrained(args.output_dir)
-        model.to(args.device)
+        traced_model.to(args.device)
 
     # Evaluation
     results = {}
@@ -710,9 +738,9 @@ def main():
             global_step = checkpoint.split("-")[-1] if len(checkpoints) > 1 else ""
             prefix = checkpoint.split("/")[-1] if checkpoint.find("checkpoint") != -1 else ""
 
-            model = model_class.from_pretrained(checkpoint)
-            model.to(args.device)
-            result = evaluate(args, model, tokenizer, prefix=prefix)
+            traced_model = model_class.from_pretrained(checkpoint)
+            traced_model.to(args.device)
+            result = evaluate(args, traced_model, tokenizer, prefix=prefix)
             result = dict((k + "_{}".format(global_step), v) for k, v in result.items())
             results.update(result)
 

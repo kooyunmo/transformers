@@ -1,7 +1,7 @@
 export GLUE_DIR=./glue_data
 export TASK_NAME=MRPC
-            
-CUDA_VISIBLE_DEVICES=0 python ./examples/run_glue.py \
+
+CUDA_VISIBLE_DEVICES=0 python ./examples/run_glue_bert_onnx.py \
     --model_type bert \
     --model_name_or_path bert-base-uncased \
     --task_name $TASK_NAME \

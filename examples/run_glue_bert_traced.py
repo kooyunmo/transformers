@@ -216,10 +216,16 @@ def train(args, train_dataset, model, tokenizer):
                     batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None
                 )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
             
-            outputs = model(inputs['input_ids'],
-                            inputs['attention_mask'],
-                            inputs['labels'],
-                            inputs['token_type_ids'])
+            with torch.autograd.profiler.profile(use_cuda=True) as prof:
+                outputs = model(inputs['input_ids'],
+                                inputs['attention_mask'],
+                                inputs['labels'],
+                                inputs['token_type_ids'])
+
+            if step % 200 == 199:
+                print('step: %d' % step)
+                print(prof.key_averages().table(sort_by="self_cpu_time_total"))
+                prof.export_chrome_trace('./profile/batch%d_bert_trace_chrome_trace' % args.train_batch_size)
 
             loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
 
